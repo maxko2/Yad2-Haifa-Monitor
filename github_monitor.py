@@ -5,6 +5,7 @@ import os
 import time
 import random
 from datetime import datetime
+import urllib.parse
 from yad2_database import Yad2Database
 from yad2_notification_manager import send_property_notifications
 
