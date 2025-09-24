@@ -21,7 +21,7 @@ jobs:
       with:
         python-version: '3.9'
     
-    - name: 📊 Download previous database
+    - name: 📊 Download previous database (ignore if first run)
       uses: actions/download-artifact@v4
       continue-on-error: true
       id: download-db
@@ -29,12 +29,14 @@ jobs:
         name: yad2-database
         path: .
     
-    - name: 📊 Check database status
+    - name: 📊 Initialize database status
       run: |
         if [ ! -f "yad2_properties.db" ]; then
-          echo "🆕 No previous database found - starting fresh!"
+          echo "🆕 FIRST RUN: Creating new database (this is normal!)"
+          echo "📝 The artifact download error above is expected for first run"
         else
-          echo "✅ Previous database found - continuing monitoring"
+          echo "✅ Previous database restored - continuing monitoring"
+          ls -la yad2_properties.db
         fi
     
     - name: 📦 Install dependencies
