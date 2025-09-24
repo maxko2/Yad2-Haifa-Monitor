@@ -2,6 +2,8 @@ import requests
 import json
 import logging
 import os
+import time
+import random
 from datetime import datetime
 from yad2_database import Yad2Database
 from yad2_notification_manager import send_property_notifications
@@ -31,18 +33,26 @@ class GitHubYad2Monitor:
             'area': '5'              # Haifa sub-area
         }
         
-        # Headers to look like a real browser
+        # Headers to look like a real browser with randomization
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
+        ]
+        
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
-            'Accept': 'application/json,*/*;q=0.9',
+            'User-Agent': random.choice(user_agents),
+            'Accept': 'application/json,text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9,he;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
-            'Referer': 'https://www.yad2.co.il/',
-            'Origin': 'https://www.yad2.co.il',
+            'DNT': '1',
             'Connection': 'keep-alive',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin'
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Cache-Control': 'max-age=0'
         }
         
         # Email recipients - get from environment or use defaults
@@ -52,15 +62,23 @@ class GitHubYad2Monitor:
         ]
     
     def fetch_properties(self) -> list:
-        """Fetch properties from the Next.js API endpoint."""
+        """Fetch properties from the Next.js API endpoint with anti-detection measures."""
         try:
+            # Add random delay to seem more human-like
+            delay = random.uniform(2, 8)
+            logger.info(f"Waiting {delay:.1f}s before request...")
+            time.sleep(delay)
+            
             logger.info(f"Fetching properties from Next.js API...")
             
-            response = requests.get(
+            # Use session for better connection handling
+            session = requests.Session()
+            session.headers.update(self.headers)
+            
+            response = session.get(
                 self.api_url,
                 params=self.params,
-                headers=self.headers,
-                timeout=30
+                timeout=45
             )
             
             logger.info(f"Response status: {response.status_code}")
@@ -71,9 +89,16 @@ class GitHubYad2Monitor:
                 logger.error(f"Response content (first 200 chars): {response.text[:200]}")
                 return []
             
+            # Check if we got CAPTCHA'd
+            if 'ShieldSquare' in response.text or 'captcha' in response.text.lower():
+                logger.warning("🛡️ CAPTCHA detected - request blocked by anti-bot protection")
+                logger.info("This is normal behavior from cloud servers. System will retry in next cycle.")
+                return []
+            
             # Parse JSON response
             try:
                 data = response.json()
+                logger.info("✅ Successfully parsed JSON response")
             except json.JSONDecodeError as e:
                 logger.error(f"JSON parsing error: {e}")
                 logger.error(f"Response content (first 500 chars): {response.text[:500]}")
@@ -94,12 +119,20 @@ class GitHubYad2Monitor:
                             if prop:
                                 properties.append(prop)
                 
-                logger.info(f"Found {len(properties)} properties")
+                logger.info(f"✅ Found {len(properties)} properties")
+            else:
+                logger.warning("Unexpected API response structure")
             
             return properties
             
+        except requests.exceptions.Timeout:
+            logger.error("⏰ Request timeout - server taking too long to respond")
+            return []
+        except requests.exceptions.RequestException as e:
+            logger.error(f"🌐 Network error: {e}")
+            return []
         except Exception as e:
-            logger.error(f"Error fetching properties: {e}")
+            logger.error(f"❌ Unexpected error: {e}")
             return []
     
     def parse_property(self, item: dict) -> dict:

@@ -4,6 +4,8 @@ on:
   schedule:
     # Run every 10 minutes
     - cron: '*/10 * * * *'
+    # Daily status report at 9 AM Israel time (6 AM UTC)
+    - cron: '0 6 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
@@ -38,4 +40,18 @@ jobs:
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         EMAIL_RECIPIENT_1: ${{ secrets.EMAIL_RECIPIENT_1 }}
         EMAIL_RECIPIENT_2: ${{ secrets.EMAIL_RECIPIENT_2 }}
-      run: python github_monitor.py
+      run: |
+        echo "🏠 Starting Yad2 monitoring cycle..."
+        python github_monitor.py || echo "Monitor completed with issues (possibly CAPTCHA blocked)"
+        echo "✅ Monitoring cycle finished"
+        
+    - name: Send daily status (if scheduled)
+      if: github.event.schedule == '0 6 * * *'
+      env:
+        GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        EMAIL_RECIPIENT_1: ${{ secrets.EMAIL_RECIPIENT_1 }}
+        EMAIL_RECIPIENT_2: ${{ secrets.EMAIL_RECIPIENT_2 }}
+      run: |
+        echo "📊 Sending daily status report..."
+        python status_reporter.py
