@@ -25,8 +25,16 @@ def send_property_notifications(new_properties: List[Dict[str, Any]],
         return
     
     try:
-        # Create email content
-        subject = f"🏠 Yad2 Haifa Update: {len(new_properties)} New + {len(price_changes)} Price Changes"
+        # Create more specific email subject
+        if new_properties and price_changes:
+            subject = f"🏠 Yad2 Haifa: {len(new_properties)} New Properties + {len(price_changes)} Price Changes"
+        elif new_properties:
+            subject = f"🏠 Yad2 Haifa: {len(new_properties)} New Properties Found!"
+        elif price_changes:
+            subject = f"💰 Yad2 Haifa: {len(price_changes)} Price Changes Only"
+        else:
+            subject = "🏠 Yad2 Haifa Update"
+            
         html_body = create_email_html(new_properties, price_changes)
         
         # Create message
