@@ -1,0 +1,63 @@
+name: 🏠 Smart Yad2 Monitor
+
+on:
+  schedule:
+    # Run every 10 minutes
+    - cron: '*/10 * * * *'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  monitor-yad2:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: 📦 Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 📊 Try to download previous database
+      uses: actions/download-artifact@v4
+      continue-on-error: true
+      id: download-db
+      with:
+        name: yad2-database
+        path: .
+    
+    - name: 📊 Initialize database if needed
+      run: |
+        if [ ! -f "yad2_properties.db" ]; then
+          echo "🆕 Creating initial database..."
+          python -c "from yad2_database import Yad2Database; db = Yad2Database('yad2_properties.db'); print('✅ Initial database created')"
+        else
+          echo "✅ Previous database found"
+          ls -la yad2_properties.db
+        fi
+    
+    - name: 🔑 Create environment file
+      run: |
+        echo "PROTON_EMAIL=${{ secrets.PROTON_EMAIL }}" > .env
+        echo "PROTON_PASSWORD=${{ secrets.PROTON_PASSWORD }}" >> .env
+        echo "RECIPIENT_EMAILS=${{ secrets.RECIPIENT_EMAILS }}" >> .env
+    
+    - name: 🏠 Run Yad2 Monitor
+      run: |
+        python github_monitor.py
+    
+    - name: 📊 Upload database artifact
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: yad2-database
+        path: yad2_properties.db
+        retention-days: 7

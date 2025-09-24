@@ -96,3 +96,19 @@ class GitHubConfig:
     def is_sms_enabled(self) -> bool:
         """SMS disabled for GitHub Actions by default."""
         return False
+    
+    def get_api_config(self) -> Dict[str, Any]:
+        """Get API configuration."""
+        return self.config_data.get('api', {})
+    
+    def get_monitoring_config(self) -> Dict[str, Any]:
+        """Get monitoring configuration."""
+        return self.config_data.get('monitoring', {})
+    
+    def get_email_config(self) -> Dict[str, Any]:
+        """Get email configuration."""
+        return self.config_data.get('notifications', {}).get('email', {})
+    
+    def get_sms_config(self) -> Dict[str, Any]:
+        """Get SMS configuration."""
+        return self.config_data.get('notifications', {}).get('sms', {})
