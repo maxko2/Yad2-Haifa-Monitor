@@ -41,9 +41,9 @@ def main():
         # Verify email configuration
         if not config.is_email_enabled():
             logger.error("❌ Email not configured! Check GitHub secrets:")
-            logger.error("   - GMAIL_EMAIL")
-            logger.error("   - GMAIL_APP_PASSWORD") 
-            logger.error("   - RECIPIENT_EMAIL")
+            logger.error("   - PROTON_EMAIL")
+            logger.error("   - PROTON_PASSWORD") 
+            logger.error("   - RECIPIENT_EMAILS")
             sys.exit(1)
         
         logger.info("✅ Email configuration verified")

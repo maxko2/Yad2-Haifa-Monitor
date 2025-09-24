@@ -24,9 +24,18 @@ jobs:
     - name: 📊 Download previous database
       uses: actions/download-artifact@v4
       continue-on-error: true
+      id: download-db
       with:
         name: yad2-database
         path: .
+    
+    - name: 📊 Check database status
+      run: |
+        if [ ! -f "yad2_properties.db" ]; then
+          echo "🆕 No previous database found - starting fresh!"
+        else
+          echo "✅ Previous database found - continuing monitoring"
+        fi
     
     - name: 📦 Install dependencies
       run: |
