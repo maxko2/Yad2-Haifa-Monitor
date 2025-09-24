@@ -3,7 +3,7 @@ name: 🏠 Smart Yad2 Monitor
 on:
   schedule:
     # Run every 30 minutes to avoid rate limiting
-    - cron: '*/30 * * * *'
+    - cron: '*/5 * * * *'
   
   # Allow manual triggering
   workflow_dispatch:
