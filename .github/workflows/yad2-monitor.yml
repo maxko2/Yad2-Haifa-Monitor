@@ -29,29 +29,35 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
     
+    - name: Download previous database
+      uses: actions/download-artifact@v3
+      with:
+        name: yad2-database
+        path: .
+      continue-on-error: true  # Don't fail if no previous database exists
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Run Advanced Yad2 monitor
+    - name: Run Advanced Yad2 monitor with GitHub persistence
       env:
         GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         EMAIL_RECIPIENT_1: ${{ secrets.EMAIL_RECIPIENT_1 }}
         EMAIL_RECIPIENT_2: ${{ secrets.EMAIL_RECIPIENT_2 }}
       run: |
-        echo "🏠 Starting Advanced Yad2 monitoring with anti-detection..."
-        python -c "
-        try:
-            from advanced_monitor import AdvancedYad2Monitor
-            monitor = AdvancedYad2Monitor()
-            monitor.run_monitoring_cycle()
-            print('✅ Advanced monitoring cycle completed successfully')
-        except Exception as e:
-            print(f'⚠️ Monitor completed with issues: {e}')
-            # Don't fail the workflow - CAPTCHA blocking is expected sometimes
-        "
+        echo "🏠 Starting GitHub Advanced Yad2 monitoring with persistence..."
+        python github_advanced_monitor.py
+        
+    - name: Upload database for next run
+      uses: actions/upload-artifact@v3
+      if: always()  # Upload even if monitoring had issues
+      with:
+        name: yad2-database
+        path: yad2_properties.db
+        retention-days: 30
         
     - name: Send daily status (if scheduled)
       if: github.event.schedule == '0 6 * * *'
