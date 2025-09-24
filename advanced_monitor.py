@@ -33,11 +33,13 @@ class AdvancedYad2Monitor:
             'area': '5'
         }
         
-        # Email recipients
+        # Email recipients from environment variables
         self.email_recipients = [
-            os.getenv('EMAIL_RECIPIENT_1', 'maxkobzer@gmail.com'),
-            os.getenv('EMAIL_RECIPIENT_2', 'yaelbrgr2@gmail.com')
+            os.getenv('EMAIL_RECIPIENT_1'),
+            os.getenv('EMAIL_RECIPIENT_2')
         ]
+        # Filter out None values
+        self.email_recipients = [email for email in self.email_recipients if email]
         
         # Create session with advanced settings
         self.session = requests.Session()

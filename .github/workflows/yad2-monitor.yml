@@ -29,24 +29,27 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
     
-    - name: Download previous database
-      uses: actions/download-artifact@v4
-      with:
-        name: yad2-database
-        path: .
-      continue-on-error: true  # Don't fail if no previous database exists
+    - name: Download previous database from repository
+      run: |
+        echo "🔍 Looking for previous database in repository..."
+        if [ -f "database/yad2_properties.db" ]; then
+          echo "✅ Found database in repository"
+          cp database/yad2_properties.db yad2_properties.db
+        elif [ -f "github_yad2_properties.db" ]; then
+          echo "🔄 Using GitHub baseline database as starting point"
+          cp github_yad2_properties.db yad2_properties.db
+        else
+          echo "🆕 Starting with empty database"
+        fi
       
     - name: Check database status
       run: |
-        echo "🔍 Checking database files..."
-        ls -la *.db || echo "No .db files found"
+        echo "🔍 Final database status..."
         if [ -f "yad2_properties.db" ]; then
-          echo "✅ Found previous database from artifact"
+          echo "✅ Working database ready"
           sqlite3 yad2_properties.db "SELECT COUNT(*) as count FROM properties;" || echo "Database query failed"
-        elif [ -f "github_yad2_properties.db" ]; then
-          echo "🔄 Using GitHub baseline database"
         else
-          echo "🆕 Starting with empty database"
+          echo "🆕 No database - will create new one"
         fi
     
     - name: Install dependencies
@@ -64,13 +67,29 @@ jobs:
         echo "🏠 Starting GitHub Advanced Yad2 monitoring with persistence..."
         python github_advanced_monitor.py
         
-    - name: Upload database for next run
-      uses: actions/upload-artifact@v4
-      if: always()  # Upload even if monitoring had issues
-      with:
-        name: yad2-database
-        path: yad2_properties.db
-        retention-days: 30
+    - name: Save database to repository
+      run: |
+        echo "💾 Saving database to repository..."
+        mkdir -p database
+        if [ -f "yad2_properties.db" ]; then
+          cp yad2_properties.db database/yad2_properties.db
+          echo "✅ Database saved to repository"
+          
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Check if there are changes
+          if git diff --quiet database/yad2_properties.db 2>/dev/null; then
+            echo "📊 No database changes to commit"
+          else
+            git add database/yad2_properties.db
+            git commit -m "🔄 Update database from monitoring run $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+            git push || echo "Push failed - continuing anyway"
+          fi
+        else
+          echo "⚠️ No database file to save"
+        fi
         
     - name: Send daily status (if scheduled)
       if: github.event.schedule == '0 6 * * *'

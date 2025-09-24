@@ -9,8 +9,13 @@
 *.sqlite3
 yad2_properties.db
 
-# Allow the GitHub baseline database
+# Allow the GitHub baseline database and database directory
 !github_yad2_properties.db
+!database/
+!database/*.db
+
+# Logs
+*.log
 
 # Python
 __pycache__/

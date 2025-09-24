@@ -18,11 +18,13 @@ def send_status_report():
         new_24h = db.get_new_properties(hours=24)
         changes_24h = db.get_price_changes(hours=24)
         
-        # Email recipients
+        # Email recipients from environment variables
         recipients = [
-            os.getenv('EMAIL_RECIPIENT_1', 'maxkobzer@gmail.com'),
-            os.getenv('EMAIL_RECIPIENT_2', 'yaelbrgr2@gmail.com')
+            os.getenv('EMAIL_RECIPIENT_1'),
+            os.getenv('EMAIL_RECIPIENT_2')
         ]
+        # Filter out None values
+        recipients = [email for email in recipients if email]
         
         # Send status if we have any activity
         if new_24h or changes_24h or stats['active'] > 0:
