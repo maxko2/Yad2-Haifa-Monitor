@@ -3,6 +3,13 @@ import os
 import json
 from typing import Dict, Any
 
+# Try to load .env file if available (for local testing)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not available, that's fine for GitHub Actions
+
 class GitHubConfig:
     """Configuration manager that works with GitHub Actions secrets."""
     
