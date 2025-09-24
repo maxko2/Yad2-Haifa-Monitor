@@ -1,0 +1,55 @@
+{
+  "api": {
+    "url": "https://www.yad2.co.il/realestate/_next/data/gtPYHLspEBp8Prnb6dWsk/rent.json?maxPrice=5000&minRooms=2.5&maxRooms=5&topArea=25&area=5",
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      "Accept": "application/json, text/plain, */*",
+      "Accept-Language": "en-US,en;q=0.9,he;q=0.8",
+      "Referer": "https://www.yad2.co.il/"
+    },
+    "method": "GET",
+    "timeout": 30
+  },
+  "monitoring": {
+    "check_interval_minutes": {
+      "min": 7,
+      "max": 13,
+      "base": 10
+    },
+    "unique_identifier_field": "token",
+    "timestamp_field": "date_added",
+    "data_path": "pageProps.feed.private",
+    "use_database": true,
+    "cleanup_old_properties_days": 30,
+    "random_user_agents": true
+  },
+  "storage": {
+    "data_file": "last_known_data.json",
+    "hash_file": "last_hash.txt"
+  },
+  "notifications": {
+    "email": {
+      "enabled": true,
+      "smtp_server": "smtp.gmail.com",
+      "smtp_port": 587,
+      "sender_email": "your_email@gmail.com",
+      "sender_password": "your_app_password",
+      "recipient_email": "recipient@example.com",
+      "subject": "🏠 New Yad2 Rental Alert - Properties Found!"
+    },
+    "sms": {
+      "enabled": false,
+      "service": "twilio",
+      "account_sid": "your_twilio_account_sid",
+      "auth_token": "your_twilio_auth_token",
+      "from_number": "+1234567890",
+      "to_number": "+0987654321"
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "api_monitor.log",
+    "max_size_mb": 10,
+    "backup_count": 3
+  }
+}
