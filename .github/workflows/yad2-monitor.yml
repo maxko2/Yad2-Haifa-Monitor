@@ -11,6 +11,9 @@ on:
 jobs:
   monitor:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Allow the action to push back to the repository
+      actions: read
     
     steps:
     - name: Checkout code
@@ -75,9 +78,10 @@ jobs:
           cp yad2_properties.db database/yad2_properties.db
           echo "✅ Database saved to repository"
           
-          # Configure git
+          # Configure git with token authentication
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           
           # Always commit the database (SQLite has internal changes even with same data)
           git add database/yad2_properties.db
@@ -87,8 +91,7 @@ jobs:
             echo "📊 No database changes to commit"
           else
             git commit -m "🔄 Update database from monitoring run $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            git push || echo "⚠️ Push failed - continuing anyway"
-            echo "✅ Database changes committed and pushed"
+            git push origin main && echo "✅ Database changes committed and pushed" || echo "⚠️ Push failed - continuing anyway"
           fi
         else
           echo "⚠️ No database file to save"
