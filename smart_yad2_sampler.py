@@ -36,15 +36,12 @@ class SmartYad2APISampler:
         """Generate randomized headers to avoid detection."""
         base_headers = self.api_config.get('headers', {}).copy()
         
+        # Only randomize user agent if configured, keep other headers intact
         if self.monitoring_config.get('random_user_agents', True):
             base_headers['User-Agent'] = random.choice(self.user_agents)
         
-        # Add some randomization
-        base_headers['Accept-Language'] = random.choice([
-            'en-US,en;q=0.9,he;q=0.8',
-            'en-US,en;q=0.9',
-            'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7'
-        ])
+        # Keep the language setting stable to avoid CAPTCHA
+        # base_headers['Accept-Language'] already set from config
         
         # Sometimes add cache control
         if random.random() < 0.3:
