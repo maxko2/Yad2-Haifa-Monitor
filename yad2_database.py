@@ -1,342 +1,252 @@
 import sqlite3
 import json
-from typing import List, Dict, Any, Optional
-from datetime import datetime
 import logging
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional, Tuple
+import hashlib
 
 class Yad2Database:
-    """SQLite database handler for Yad2 property monitoring."""
+    """Clean SQLite database handler for Yad2 property monitoring."""
     
-    def __init__(self, db_path: str = "yad2_properties.db"):
+    def __init__(self, db_path: str = 'yad2_properties.db'):
         self.db_path = db_path
         self.logger = logging.getLogger(__name__)
-        self._create_tables()
+        self.init_database()
     
-    def _create_tables(self):
-        """Create database tables if they don't exist."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            # Properties table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS properties (
-                    id TEXT PRIMARY KEY,
-                    price INTEGER,
-                    address TEXT,
-                    rooms REAL,
-                    size_sqm INTEGER,
-                    floor TEXT,
-                    property_type TEXT,
-                    condition_text TEXT,
-                    url TEXT,
-                    image_url TEXT,
-                    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    raw_data TEXT,
-                    is_notified BOOLEAN DEFAULT FALSE
-                )
-            ''')
-            
-            # Monitoring runs table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS monitoring_runs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    properties_found INTEGER,
-                    new_properties INTEGER,
-                    success BOOLEAN,
-                    error_message TEXT,
-                    api_response_hash TEXT
-                )
-            ''')
-            
-            conn.commit()
-            self.logger.info("Database tables initialized")
+    def init_database(self):
+        """Initialize the database with necessary tables."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Properties table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS properties (
+                        id TEXT PRIMARY KEY,
+                        yad2_id TEXT UNIQUE,
+                        title TEXT,
+                        price INTEGER,
+                        rooms REAL,
+                        floor INTEGER,
+                        size INTEGER,
+                        address TEXT,
+                        neighborhood TEXT,
+                        contact_name TEXT,
+                        phone TEXT,
+                        description TEXT,
+                        images TEXT,
+                        amenities TEXT,
+                        first_seen TIMESTAMP,
+                        last_seen TIMESTAMP,
+                        price_history TEXT,
+                        raw_data TEXT,
+                        is_active BOOLEAN DEFAULT 1
+                    )
+                ''')
+                
+                # Price changes table
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS price_changes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        property_id TEXT,
+                        old_price INTEGER,
+                        new_price INTEGER,
+                        change_date TIMESTAMP,
+                        FOREIGN KEY (property_id) REFERENCES properties (id)
+                    )
+                ''')
+                
+                conn.commit()
+                self.logger.info("Database initialized successfully")
+                
+        except Exception as e:
+            self.logger.error(f"Database initialization error: {e}")
+            raise
     
-    def save_properties(self, properties: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Save properties to database and return statistics.
-        
-        Args:
-            properties: List of formatted property data
-            
-        Returns:
-            Dictionary with counts and lists of changes
-        """
-        stats = {
-            'new': 0, 
-            'updated': 0, 
-            'total': len(properties),
-            'price_changes': [],
-            'removed_properties': []
-        }
-        
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            current_time = datetime.now().isoformat()
-            
-            # Get current property IDs from API response
-            current_property_ids = {prop.get('id') for prop in properties if prop.get('id')}
-            
-            # Find properties that are no longer in the API response (removed/sold)
-            cursor.execute('SELECT id, address, price FROM properties WHERE last_seen > datetime("now", "-1 day")')
-            active_properties = cursor.fetchall()
-            
-            for prop_id, address, price in active_properties:
-                if prop_id not in current_property_ids:
-                    # Property no longer exists - mark as removed
-                    cursor.execute('UPDATE properties SET last_seen = ? WHERE id = ?', 
-                                 (current_time, prop_id))
-                    stats['removed_properties'].append({
-                        'id': prop_id,
-                        'address': address,
-                        'price': price,
-                        'removed_time': current_time
-                    })
-            
-            for prop in properties:
-                prop_id = prop.get('id')
-                if not prop_id:
-                    continue
+    def generate_property_id(self, property_data: Dict[str, Any]) -> str:
+        """Generate a unique ID for a property based on key characteristics."""
+        # Use address and title for unique identification
+        key_data = f"{property_data.get('title', '')}{property_data.get('address', '')}{property_data.get('rooms', '')}"
+        return hashlib.md5(key_data.encode()).hexdigest()
+    
+    def add_or_update_property(self, property_data: Dict[str, Any]) -> Tuple[bool, bool]:
+        """Add or update property in database. Returns: (is_new, price_changed)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Generate unique ID
+                property_id = self.generate_property_id(property_data)
+                yad2_id = str(property_data.get('id', ''))
                 
                 # Check if property exists
-                cursor.execute('SELECT id, last_seen, price FROM properties WHERE id = ?', (prop_id,))
+                cursor.execute('SELECT id, price FROM properties WHERE id = ? OR yad2_id = ?', 
+                             (property_id, yad2_id))
                 existing = cursor.fetchone()
                 
+                current_price = int(property_data.get('price', 0))
+                current_time = datetime.now()
+                
                 if existing:
-                    old_price = existing[2]
-                    new_price = prop.get('price')
+                    # Property exists - check for price change
+                    existing_id, existing_price = existing
+                    price_changed = existing_price != current_price
                     
-                    # Check for price changes
-                    if old_price and new_price and old_price != new_price:
-                        stats['price_changes'].append({
-                            'id': prop_id,
-                            'address': prop.get('address'),
-                            'old_price': old_price,
-                            'new_price': new_price,
-                            'price_diff': new_price - old_price,
-                            'change_time': current_time
-                        })
+                    if price_changed:
+                        # Record price change
+                        cursor.execute('''
+                            INSERT INTO price_changes (property_id, old_price, new_price, change_date)
+                            VALUES (?, ?, ?, ?)
+                        ''', (existing_id, existing_price, current_price, current_time))
                     
                     # Update existing property
                     cursor.execute('''
-                        UPDATE properties 
-                        SET price=?, address=?, rooms=?, size_sqm=?, floor=?, 
-                            property_type=?, condition_text=?, url=?, image_url=?,
-                            last_seen=?, raw_data=?
-                        WHERE id=?
+                        UPDATE properties SET
+                            title = ?, price = ?, rooms = ?, floor = ?, size = ?,
+                            address = ?, neighborhood = ?, contact_name = ?, phone = ?,
+                            description = ?, images = ?, amenities = ?, last_seen = ?,
+                            is_active = 1 WHERE id = ?
                     ''', (
-                        prop.get('price'),
-                        prop.get('address'),
-                        prop.get('rooms'),
-                        prop.get('size_sqm'),
-                        prop.get('floor'),
-                        prop.get('property_type'),
-                        prop.get('condition'),
-                        prop.get('url'),
-                        prop.get('image_url'),
+                        property_data.get('title', ''),
+                        current_price,
+                        float(property_data.get('rooms', 0)),
+                        int(property_data.get('floor', 0)),
+                        int(property_data.get('size', 0)),
+                        property_data.get('address', ''),
+                        property_data.get('neighborhood', ''),
+                        property_data.get('contact_name', ''),
+                        property_data.get('phone', ''),
+                        property_data.get('description', ''),
+                        json.dumps(property_data.get('images', [])),
+                        json.dumps(property_data.get('amenities', [])),
                         current_time,
-                        json.dumps(prop),
-                        prop_id
+                        existing_id
                     ))
-                    stats['updated'] += 1
+                    
+                    conn.commit()
+                    return False, price_changed
+                
                 else:
-                    # Insert new property
+                    # New property
                     cursor.execute('''
-                        INSERT INTO properties 
-                        (id, price, address, rooms, size_sqm, floor, property_type, 
-                         condition_text, url, image_url, first_seen, last_seen, raw_data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO properties (
+                            id, yad2_id, title, price, rooms, floor, size,
+                            address, neighborhood, contact_name, phone,
+                            description, images, amenities, first_seen,
+                            last_seen, is_active
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
-                        prop_id,
-                        prop.get('price'),
-                        prop.get('address'),
-                        prop.get('rooms'),
-                        prop.get('size_sqm'),
-                        prop.get('floor'),
-                        prop.get('property_type'),
-                        prop.get('condition'),
-                        prop.get('url'),
-                        prop.get('image_url'),
-                        current_time,
-                        current_time,
-                        json.dumps(prop)
+                        property_id, yad2_id, property_data.get('title', ''),
+                        current_price, float(property_data.get('rooms', 0)),
+                        int(property_data.get('floor', 0)), int(property_data.get('size', 0)),
+                        property_data.get('address', ''), property_data.get('neighborhood', ''),
+                        property_data.get('contact_name', ''), property_data.get('phone', ''),
+                        property_data.get('description', ''), json.dumps(property_data.get('images', [])),
+                        json.dumps(property_data.get('amenities', [])), current_time, current_time, 1
                     ))
-                    stats['new'] += 1
-            
-            conn.commit()
+                    
+                    conn.commit()
+                    return True, False
+                    
+        except Exception as e:
+            self.logger.error(f"Error adding/updating property: {e}")
+            return False, False
+    
+    def get_new_properties(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get properties added in the last N hours."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cutoff_time = datetime.now() - timedelta(hours=hours)
+                
+                cursor.execute('''
+                    SELECT * FROM properties 
+                    WHERE first_seen >= ? AND is_active = 1
+                    ORDER BY first_seen DESC
+                ''', (cutoff_time,))
+                
+                return [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
+                
+        except Exception as e:
+            self.logger.error(f"Error getting new properties: {e}")
+            return []
+    
+    def get_price_changes(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get properties with price changes in the last N hours."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cutoff_time = datetime.now() - timedelta(hours=hours)
+                
+                cursor.execute('''
+                    SELECT p.*, pc.old_price, pc.new_price, pc.change_date
+                    FROM properties p
+                    JOIN price_changes pc ON p.id = pc.property_id
+                    WHERE pc.change_date >= ? AND p.is_active = 1
+                    ORDER BY pc.change_date DESC
+                ''', (cutoff_time,))
+                
+                return [self._row_to_dict(cursor, row) for row in cursor.fetchall()]
+                
+        except Exception as e:
+            self.logger.error(f"Error getting price changes: {e}")
+            return []
+    
+    def cleanup_old_properties(self, days: int = 14):
+        """Mark properties as inactive if not seen for N days."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cutoff_time = datetime.now() - timedelta(days=days)
+                
+                cursor.execute('''
+                    UPDATE properties SET is_active = 0 
+                    WHERE last_seen < ? AND is_active = 1
+                ''', (cutoff_time,))
+                
+                updated_count = cursor.rowcount
+                conn.commit()
+                
+                if updated_count > 0:
+                    self.logger.info(f"Marked {updated_count} properties as inactive")
+                
+        except Exception as e:
+            self.logger.error(f"Error cleaning up old properties: {e}")
+    
+    def get_property_count(self) -> Dict[str, int]:
+        """Get statistics about properties in database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT COUNT(*) FROM properties WHERE is_active = 1')
+                active_count = cursor.fetchone()[0]
+                
+                cursor.execute('SELECT COUNT(*) FROM properties')
+                total_count = cursor.fetchone()[0]
+                
+                return {
+                    'active': active_count,
+                    'total': total_count,
+                    'recent_price_changes': 0
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Error getting property count: {e}")
+            return {'active': 0, 'total': 0, 'recent_price_changes': 0}
+    
+    def _row_to_dict(self, cursor, row) -> Dict[str, Any]:
+        """Convert database row to dictionary."""
+        columns = [desc[0] for desc in cursor.description]
+        row_dict = dict(zip(columns, row))
         
-        self.logger.info(f"Database updated: {stats['new']} new, {stats['updated']} updated, "
-                        f"{len(stats['price_changes'])} price changes, "
-                        f"{len(stats['removed_properties'])} removed")
-        return stats
-    
-    def get_new_properties_for_notification(self) -> List[Dict[str, Any]]:
-        """
-        Get new properties that haven't been notified yet.
+        # Parse JSON fields
+        json_fields = ['images', 'amenities']
+        for field in json_fields:
+            if field in row_dict and row_dict[field]:
+                try:
+                    row_dict[field] = json.loads(row_dict[field])
+                except (json.JSONDecodeError, TypeError):
+                    row_dict[field] = []
         
-        Returns:
-            List of new property data
-        """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT * FROM properties 
-                WHERE is_notified = FALSE 
-                ORDER BY first_seen DESC
-            ''')
-            
-            rows = cursor.fetchall()
-            properties = []
-            
-            for row in rows:
-                prop = dict(row)
-                # Parse raw_data back to dict if needed
-                if prop['raw_data']:
-                    try:
-                        raw_data = json.loads(prop['raw_data'])
-                        prop.update(raw_data)
-                    except:
-                        pass
-                properties.append(prop)
-            
-            return properties
-    
-    def mark_properties_as_notified(self, property_ids: List[str]):
-        """Mark properties as notified to avoid duplicate notifications."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            for prop_id in property_ids:
-                cursor.execute(
-                    'UPDATE properties SET is_notified = TRUE WHERE id = ?', 
-                    (prop_id,)
-                )
-            
-            conn.commit()
-            self.logger.info(f"Marked {len(property_ids)} properties as notified")
-    
-    def log_monitoring_run(self, properties_found: int, new_properties: int, 
-                          success: bool, error_message: str = None, 
-                          api_response_hash: str = None):
-        """Log a monitoring run for statistics and debugging."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO monitoring_runs 
-                (properties_found, new_properties, success, error_message, api_response_hash)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (properties_found, new_properties, success, error_message, api_response_hash))
-            
-            conn.commit()
-    
-    def get_property_statistics(self) -> Dict[str, Any]:
-        """Get statistics about monitored properties."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            # Total properties
-            cursor.execute('SELECT COUNT(*) FROM properties')
-            total_properties = cursor.fetchone()[0]
-            
-            # Properties seen in last 24 hours
-            cursor.execute('''
-                SELECT COUNT(*) FROM properties 
-                WHERE last_seen > datetime('now', '-1 day')
-            ''')
-            active_properties = cursor.fetchone()[0]
-            
-            # New properties in last 24 hours
-            cursor.execute('''
-                SELECT COUNT(*) FROM properties 
-                WHERE first_seen > datetime('now', '-1 day')
-            ''')
-            new_today = cursor.fetchone()[0]
-            
-            # Monitoring runs in last 24 hours
-            cursor.execute('''
-                SELECT COUNT(*), AVG(properties_found) FROM monitoring_runs 
-                WHERE run_time > datetime('now', '-1 day')
-            ''')
-            runs_data = cursor.fetchone()
-            runs_today = runs_data[0] or 0
-            avg_properties = runs_data[1] or 0
-            
-            # Success rate
-            cursor.execute('''
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful
-                FROM monitoring_runs 
-                WHERE run_time > datetime('now', '-1 day')
-            ''')
-            success_data = cursor.fetchone()
-            success_rate = (success_data[1] / success_data[0] * 100) if success_data[0] > 0 else 0
-            
-            return {
-                'total_properties': total_properties,
-                'active_properties': active_properties,
-                'new_today': new_today,
-                'runs_today': runs_today,
-                'avg_properties_per_run': round(avg_properties, 1),
-                'success_rate': round(success_rate, 1)
-            }
-    
-    def cleanup_old_properties(self, days: int = 30):
-        """Remove properties not seen for specified days."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                DELETE FROM properties 
-                WHERE last_seen < datetime('now', '-{} days')
-            '''.format(days))
-            
-            deleted = cursor.rowcount
-            conn.commit()
-            
-            self.logger.info(f"Cleaned up {deleted} old properties (>{days} days)")
-            return deleted
-    
-    def remove_sold_properties(self, hours: int = 24):
-        """Remove properties that haven't been seen in the last X hours (likely sold/removed)."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            # Get properties to be removed for logging
-            cursor.execute('''
-                SELECT id, address, price FROM properties 
-                WHERE last_seen < datetime('now', '-{} hours')
-            '''.format(hours))
-            
-            removed_properties = cursor.fetchall()
-            
-            # Remove them
-            cursor.execute('''
-                DELETE FROM properties 
-                WHERE last_seen < datetime('now', '-{} hours')
-            '''.format(hours))
-            
-            deleted = cursor.rowcount
-            conn.commit()
-            
-            self.logger.info(f"Removed {deleted} sold/unavailable properties (>{hours} hours)")
-            return [{'id': p[0], 'address': p[1], 'price': p[2]} for p in removed_properties]
-    
-    def get_recent_properties(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get most recent properties for debugging."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT id, price, address, rooms, first_seen, last_seen 
-                FROM properties 
-                ORDER BY last_seen DESC 
-                LIMIT ?
-            ''', (limit,))
-            
-            return [dict(row) for row in cursor.fetchall()]
+        return row_dict

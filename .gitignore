@@ -1,25 +1,26 @@
-# .env
-*.log
+# Environment and secrets
+.env
+*.env
+.env.*
+
+# Database files (contain sensitive property data)
+*.db
+*.sqlite
+*.sqlite3
+yad2_properties.db
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
@@ -32,18 +33,10 @@ wheels/
 .DS_Store
 Thumbs.db
 
-# Service files
-last_known_data.json
-last_hash.txt
-api_monitor.log
-*.db
-*.sqlite
-*.sqlite3
+# Logs
+*.log
+logs/
 
-# Virtual environment
-.venv/
-venv/
-env/
-
-# Secrets (just in case)
-.env
+# Temporary files
+*.tmp
+*.temp

@@ -1,65 +1,39 @@
-name: 🏠 Smart Yad2 Monitor
+name: Yad2 Haifa Property Monitor
 
 on:
   schedule:
-    # Run every 30 minutes to avoid rate limiting
-    - cron: '*/30 * * * *'
-  
-  # Allow manual triggering
-  workflow_dispatch:
+    # Run every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allow manual triggering
 
 jobs:
-  monitor-yad2:
+  monitor:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: 🐍 Set up Python
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.11'
     
-    - name: 📦 Install dependencies
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
       run: |
-        pip install --upgrade pip
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: 📊 Try to download previous database
-      uses: actions/download-artifact@v4
-      continue-on-error: true
-      id: download-db
-      with:
-        name: yad2-database
-        path: .
-    
-    - name: 📊 Initialize database if needed
-      run: |
-        if [ ! -f "yad2_properties.db" ]; then
-          echo "🆕 Creating initial database..."
-          python -c "from yad2_database import Yad2Database; db = Yad2Database('yad2_properties.db'); print('✅ Initial database created')"
-        else
-          echo "✅ Previous database found"
-          ls -la yad2_properties.db
-        fi
-    
-    - name: 🔑 Create environment file
-      run: |
-        echo "PROTON_EMAIL=${{ secrets.PROTON_EMAIL }}" > .env
-        echo "PROTON_PASSWORD=${{ secrets.PROTON_PASSWORD }}" >> .env
-        echo "RECIPIENT_EMAILS=${{ secrets.RECIPIENT_EMAILS }}" >> .env
-    
-    - name: 🏠 Run Yad2 Monitor
-      run: |
-        # Add random delay to avoid predictable timing
-        sleep $((RANDOM % 300 + 60))  # Random delay 1-5 minutes
-        python github_monitor.py
-    
-    - name: 📊 Upload database artifact
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: yad2-database
-        path: yad2_properties.db
-        retention-days: 7
+    - name: Run Yad2 monitor
+      env:
+        GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
+        GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      run: python github_monitor.py
