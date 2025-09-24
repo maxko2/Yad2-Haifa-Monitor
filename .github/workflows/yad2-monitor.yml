@@ -35,6 +35,19 @@ jobs:
         name: yad2-database
         path: .
       continue-on-error: true  # Don't fail if no previous database exists
+      
+    - name: Check database status
+      run: |
+        echo "🔍 Checking database files..."
+        ls -la *.db || echo "No .db files found"
+        if [ -f "yad2_properties.db" ]; then
+          echo "✅ Found previous database from artifact"
+          sqlite3 yad2_properties.db "SELECT COUNT(*) as count FROM properties;" || echo "Database query failed"
+        elif [ -f "github_yad2_properties.db" ]; then
+          echo "🔄 Using GitHub baseline database"
+        else
+          echo "🆕 Starting with empty database"
+        fi
     
     - name: Install dependencies
       run: |
