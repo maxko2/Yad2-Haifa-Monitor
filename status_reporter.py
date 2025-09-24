@@ -26,9 +26,9 @@ def send_status_report():
         # Filter out None values
         recipients = [email for email in recipients if email]
         
-        # Send status if we have any activity
-        if new_24h or changes_24h or stats['active'] > 0:
-            logger.info(f"Sending status report: {len(new_24h)} new, {len(changes_24h)} changes")
+        # Send status ONLY if we have new activity (not just existing properties)
+        if new_24h or changes_24h:
+            logger.info(f"📊 Sending status report: {len(new_24h)} new, {len(changes_24h)} changes")
             
             send_property_notifications(
                 new_properties=new_24h,
@@ -36,9 +36,9 @@ def send_status_report():
                 recipients=recipients
             )
             
-            logger.info("Status report sent successfully")
+            logger.info("✅ Status report sent successfully")
         else:
-            logger.info("No activity to report")
+            logger.info("📧 No new activity in last 24h - no status report sent")
             
     except Exception as e:
         logger.error(f"Error sending status report: {e}")
