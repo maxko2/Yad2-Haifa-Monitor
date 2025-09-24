@@ -143,8 +143,8 @@ class SmartYad2APISampler:
         error_message = None
         
         try:
-            # Add random delay before request
-            self.add_random_delay(1.0, 2.5)
+            # Add longer random delay before request (2-8 seconds)
+            self.add_random_delay(2.0, 8.0)
             
             url = self.api_config.get('url')
             headers = self.get_random_headers()
@@ -156,72 +156,89 @@ class SmartYad2APISampler:
             
             self.logger.info(f"Fetching Yad2 data from API...")
             
-            response = requests.request(
+            # Add session for connection reuse and better bot detection avoidance
+            session = requests.Session()
+            session.headers.update(headers)
+            
+            response = session.request(
                 method=method,
                 url=url,
-                headers=headers,
                 timeout=timeout
             )
             
-            response.raise_for_status()
-            raw_data = response.json()
-            
-            # Calculate response hash for logging
-            response_hash = hashlib.md5(
-                json.dumps(raw_data, sort_keys=True).encode()
-            ).hexdigest()[:10]
-            
-            # Extract properties from the nested structure
-            properties = self.extract_properties_from_response(raw_data)
-            
-            if properties:
-                # Format properties for database
-                formatted_properties = []
-                for prop in properties:
-                    formatted = self.format_property_for_database(prop)
-                    if formatted.get('id') != 'N/A':
-                        formatted_properties.append(formatted)
-                
-                # Save to database
-                stats = self.db.save_properties(formatted_properties)
-                
-                # Log the run
-                self.db.log_monitoring_run(
-                    properties_found=len(formatted_properties),
-                    new_properties=stats['new'],
-                    success=True,
-                    api_response_hash=response_hash
-                )
-                
-                # Handle removed properties (cleanup sold/unavailable ones)
-                removed_properties = self.db.remove_sold_properties(hours=24)
-                if removed_properties:
-                    stats['removed_properties'] = removed_properties
-                    self.logger.info(f"🗑️ Removed {len(removed_properties)} sold/unavailable properties")
-                
-                self.logger.info(f"✅ Successfully processed {len(formatted_properties)} properties")
-                self.logger.info(f"📊 Stats: {stats['new']} new, {stats['updated']} updated")
-                if stats.get('price_changes'):
-                    self.logger.info(f"💰 Price changes: {len(stats['price_changes'])}")
-                if stats.get('removed_properties'):
-                    self.logger.info(f"🗑️ Removed: {len(stats['removed_properties'])}")
-                
-                return True, stats, None
+            # Handle different response codes
+            if response.status_code == 403:
+                error_message = "Access forbidden - Yad2 anti-bot protection triggered. Try again later."
+                self.logger.error(error_message)
+                # Don't raise_for_status() to avoid generic error message
+            elif response.status_code == 429:
+                error_message = "Rate limited by Yad2. Waiting longer between requests."
+                self.logger.error(error_message)
             else:
-                error_message = "No properties found in API response"
-                self.logger.warning(error_message)
+                response.raise_for_status()
+                raw_data = response.json()
                 
-                self.db.log_monitoring_run(
-                    properties_found=0,
-                    new_properties=0,
-                    success=False,
-                    error_message=error_message
-                )
+                # Calculate response hash for logging
+                response_hash = hashlib.md5(
+                    json.dumps(raw_data, sort_keys=True).encode()
+                ).hexdigest()[:10]
                 
-                return False, {'new': 0, 'updated': 0, 'total': 0}, error_message
+                # Extract properties from the nested structure
+                properties = self.extract_properties_from_response(raw_data)
+                
+                if properties:
+                    # Format properties for database
+                    formatted_properties = []
+                    for prop in properties:
+                        formatted = self.format_property_for_database(prop)
+                        if formatted.get('id') != 'N/A':
+                            formatted_properties.append(formatted)
+                    
+                    # Save to database
+                    stats = self.db.save_properties(formatted_properties)
+                    
+                    # Log the run
+                    self.db.log_monitoring_run(
+                        properties_found=len(formatted_properties),
+                        new_properties=stats['new'],
+                        success=True,
+                        api_response_hash=response_hash
+                    )
+                    
+                    # Handle removed properties (cleanup sold/unavailable ones)
+                    removed_properties = self.db.remove_sold_properties(hours=24)
+                    if removed_properties:
+                        stats['removed_properties'] = removed_properties
+                        self.logger.info(f"🗑️ Removed {len(removed_properties)} sold/unavailable properties")
+                    
+                    self.logger.info(f"✅ Successfully processed {len(formatted_properties)} properties")
+                    self.logger.info(f"📊 Stats: {stats['new']} new, {stats['updated']} updated")
+                    if stats.get('price_changes'):
+                        self.logger.info(f"💰 Price changes: {len(stats['price_changes'])}")
+                    if stats.get('removed_properties'):
+                        self.logger.info(f"🗑️ Removed: {len(stats['removed_properties'])}")
+                    
+                    return True, stats, None
+                else:
+                    error_message = "No properties found in API response"
+                    self.logger.warning(error_message)
+                    
+                    self.db.log_monitoring_run(
+                        properties_found=0,
+                        new_properties=0,
+                        success=False,
+                        error_message=error_message
+                    )
+                    
+                    return False, {'new': 0, 'updated': 0, 'total': 0}, error_message
             
         except requests.exceptions.RequestException as e:
-            error_message = f"API request failed: {e}"
+            if "403" in str(e):
+                error_message = f"Blocked by Yad2 anti-bot (403). Will retry later with different approach."
+            elif "429" in str(e):
+                error_message = f"Rate limited (429). Reduce monitoring frequency."
+            else:
+                error_message = f"API request failed: {e}"
             self.logger.error(error_message)
         except json.JSONDecodeError as e:
             error_message = f"Failed to parse JSON response: {e}"

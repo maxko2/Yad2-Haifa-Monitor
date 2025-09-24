@@ -2,15 +2,18 @@
   "api": {
     "url": "https://www.yad2.co.il/realestate/_next/data/gtPYHLspEBp8Prnb6dWsk/rent.json?maxPrice=5000&minRooms=2.5&maxRooms=5&topArea=25&area=5",
     "headers": {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
       "Accept": "application/json, text/plain, */*",
       "Accept-Language": "en-US,en;q=0.9,he;q=0.8",
-      "Referer": "https://www.yad2.co.il/",
       "Accept-Encoding": "gzip, deflate, br",
+      "Referer": "https://www.yad2.co.il/realestate/rent?topArea=25&area=5&maxPrice=5000&minRooms=2.5&maxRooms=5",
+      "Origin": "https://www.yad2.co.il",
       "Connection": "keep-alive",
       "Sec-Fetch-Dest": "empty",
       "Sec-Fetch-Mode": "cors",
-      "Sec-Fetch-Site": "same-origin"
+      "Sec-Fetch-Site": "same-origin",
+      "X-Requested-With": "XMLHttpRequest",
+      "DNT": "1"
     },
     "method": "GET",
     "timeout": 30
