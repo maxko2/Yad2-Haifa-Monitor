@@ -34,16 +34,24 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: Run Yad2 monitor
+    - name: Run Advanced Yad2 monitor
       env:
         GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
         GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         EMAIL_RECIPIENT_1: ${{ secrets.EMAIL_RECIPIENT_1 }}
         EMAIL_RECIPIENT_2: ${{ secrets.EMAIL_RECIPIENT_2 }}
       run: |
-        echo "🏠 Starting Yad2 monitoring cycle..."
-        python github_monitor.py || echo "Monitor completed with issues (possibly CAPTCHA blocked)"
-        echo "✅ Monitoring cycle finished"
+        echo "🏠 Starting Advanced Yad2 monitoring with anti-detection..."
+        python -c "
+        try:
+            from advanced_monitor import AdvancedYad2Monitor
+            monitor = AdvancedYad2Monitor()
+            monitor.run_monitoring_cycle()
+            print('✅ Advanced monitoring cycle completed successfully')
+        except Exception as e:
+            print(f'⚠️ Monitor completed with issues: {e}')
+            # Don't fail the workflow - CAPTCHA blocking is expected sometimes
+        "
         
     - name: Send daily status (if scheduled)
       if: github.event.schedule == '0 6 * * *'
